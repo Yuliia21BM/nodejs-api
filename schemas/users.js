@@ -1,5 +1,6 @@
 const Joi = require("joi");
 
-const userSchema = Joi.object({});
+const registrationSchema = Joi.object({});
+const loginSchema = Joi.object({});
 
-module.exports = { userSchema };
+module.exports = { registrationSchema, loginSchema };
