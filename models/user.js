@@ -5,6 +5,9 @@ const emailRegex = /^[\w-.]+@([\w-]+\.)+[\w-]{2,4}$/;
 
 const usertSchema = new Schema(
   {
+    name: {
+      type: String,
+    },
     password: {
       type: String,
       minlength: 6,
@@ -31,6 +34,6 @@ const usertSchema = new Schema(
 
 usertSchema.post("save", handleMongooseError);
 
-const User = model("contact", usertSchema);
+const User = model("user", usertSchema);
 
 module.exports = User;
