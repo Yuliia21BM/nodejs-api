@@ -1,5 +1,10 @@
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const fs = require("fs/promises");
+const path = require("path");
+const gravatar = require("gravatar");
+const Jimp = require("jimp");
+
 const User = require("./../models/user");
 const { HTTPError } = require("../helpers");
 const { ctrlWrapper } = require("../helpers");
@@ -15,7 +20,13 @@ const register = async (req, res) => {
 
   const hashPassword = await bcrypt.hash(password, 10);
   console.log(hashPassword);
-  const newUser = await User.create({ ...req.body, password: hashPassword });
+
+  const avatarURL = gravatar.url(email);
+  const newUser = await User.create({
+    ...req.body,
+    password: hashPassword,
+    avatarURL,
+  });
 
   res.status(201).json({
     email: newUser.email,
@@ -42,7 +53,7 @@ const login = async (req, res) => {
   const token = jwt.sign(payload, SECRET_KEY, { expiresIn: "24h" });
   await User.findByIdAndUpdate(user._id, { token });
 
-  res.status(201).json({ token });
+  res.status(200).json({ token });
 };
 
 const logout = async (req, res) => {
@@ -62,9 +73,44 @@ const getCurrent = async (req, res) => {
   });
 };
 
+const avatarDir = path.join(__dirname, "../", "public", "avatars");
+const avatarExtensions = ["jpg", "jpeg", "png", "gif", "bmp", "tiff", "vebp"];
+
+const updateAvatar = async (req, res) => {
+  const { _id } = req.user;
+  const { path: tempUpload, originalname } = req.file;
+  const avatarName = `${_id}_${originalname}`;
+
+  const fileExtension = originalname.substring(
+    originalname.lastIndexOf(".") + 1
+  );
+
+  if (!avatarExtensions.includes(fileExtension.toLowerCase())) {
+    throw HTTPError(
+      400,
+      `${originalname} includes an invalid file extension! Must be: ${avatarExtensions.join(
+        ", or "
+      )}`
+    );
+  }
+
+  const resultUpload = path.join(avatarDir, avatarName);
+
+  const image = await Jimp.read(tempUpload);
+  await image.autocrop().cover(250, 250).quality(60).writeAsync(tempUpload);
+
+  await fs.rename(tempUpload, resultUpload);
+
+  const avatarURL = path.join("avatars", avatarName); // перевірити точний шлях
+  await User.findByIdAndUpdate(_id, { avatarURL });
+
+  res.json({ avatarURL });
+};
+
 module.exports = {
   register: ctrlWrapper(register),
   login: ctrlWrapper(login),
   logout: ctrlWrapper(logout),
   getCurrent: ctrlWrapper(getCurrent),
+  updateAvatar: ctrlWrapper(updateAvatar),
 };
