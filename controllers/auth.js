@@ -4,10 +4,10 @@ const fs = require("fs/promises");
 const path = require("path");
 const gravatar = require("gravatar");
 const Jimp = require("jimp");
+const { nanoid } = require("nanoid");
 
 const User = require("./../models/user");
-const { HTTPError } = require("../helpers");
-const { ctrlWrapper } = require("../helpers");
+const { HTTPError, ctrlWrapper, sendEmail } = require("../helpers");
 
 const { SECRET_KEY } = process.env;
 
@@ -22,11 +22,16 @@ const register = async (req, res) => {
   console.log(hashPassword);
 
   const avatarURL = gravatar.url(email);
+  const verificationToken = nanoid();
+
   const newUser = await User.create({
     ...req.body,
     password: hashPassword,
     avatarURL,
+    verificationToken,
   });
+
+  await sendEmail(email, verificationToken);
 
   res.status(201).json({
     email: newUser.email,
@@ -35,11 +40,50 @@ const register = async (req, res) => {
   });
 };
 
+const verifyEmail = async (req, res) => {
+  const { verificationToken } = req.params;
+  const user = await User.findOne({ verificationToken });
+
+  if (!user) {
+    throw HTTPError(404, "User not found");
+  }
+
+  await User.findByIdAndUpdate(user._id, {
+    verify: true,
+    verificationToken: "",
+  });
+
+  res.status(200).json({
+    message: "Verification successful",
+  });
+};
+
+const resendVerifyEmail = async (req, res) => {
+  const { email } = req.body;
+
+  const user = await User.findOne({ email });
+
+  if (!user) {
+    throw HTTPError(404, "User not found");
+  }
+
+  if (user.verify) {
+    throw HTTPError(400, "Verification has already been passed");
+  }
+
+  await sendEmail(email, user.verificationToken);
+
+  res.status(200).json({ message: "Verification email sent" });
+};
+
 const login = async (req, res) => {
   const { email, password } = req.body;
   const user = await User.findOne({ email });
   if (!user) {
     throw HTTPError(401, "Email or password is wrong");
+  }
+  if (!user.verify) {
+    throw HTTPError(404, "User not found");
   }
   const passwordCompare = await bcrypt.compare(password, user.password);
   if (!passwordCompare) {
@@ -113,4 +157,6 @@ module.exports = {
   logout: ctrlWrapper(logout),
   getCurrent: ctrlWrapper(getCurrent),
   updateAvatar: ctrlWrapper(updateAvatar),
+  verifyEmail: ctrlWrapper(verifyEmail),
+  resendVerifyEmail: ctrlWrapper(resendVerifyEmail),
 };
